@@ -50,6 +50,7 @@ export class GameEngine {
     this.stackedScoops = [];
     this.fallingScoop = null;
     this.swingScoop = null;
+    this.nextScoopTimer = null;
 
     this.swingTime = 0;
     this.swingSpeed = 2.4;
@@ -79,8 +80,8 @@ export class GameEngine {
     const aspect = this.container.clientWidth / this.container.clientHeight;
     const fov = aspect < 1.0 ? 45 + (1.0 - aspect) * 18 : 45;
     this.camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 100);
-    this.camera.position.set(0, 3.2, 7.5);
-    this.camera.lookAt(0, 1.2, 0);
+    this.camera.position.set(0, 2.5, 7.5);
+    this.camera.lookAt(0, 1.7, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
@@ -229,16 +230,27 @@ export class GameEngine {
       this.activeRoster = [def];
       return def;
     }
+    if (!this.isRandomMixMode) {
+      return this.selectedCharacter || this.activeRoster[0] || createDefaultScoopCharacter();
+    }
     const idx = (this.characterTurnIndex || 0) % this.activeRoster.length;
     const char = this.activeRoster[idx];
     this.characterTurnIndex = (this.characterTurnIndex || 0) + 1;
     if (!char || !char.state) {
-      return this.activeRoster[0] || createDefaultScoopCharacter();
+      return this.selectedCharacter || this.activeRoster[0] || createDefaultScoopCharacter();
     }
     return char;
   }
 
+  clearNextScoopTimer() {
+    if (this.nextScoopTimer) {
+      clearTimeout(this.nextScoopTimer);
+      this.nextScoopTimer = null;
+    }
+  }
+
   startNewGame() {
+    this.clearNextScoopTimer();
     this.sound.init();
     this.sound.startBgm();
 
@@ -253,6 +265,14 @@ export class GameEngine {
       this.scene.remove(this.swingScoop.group);
       this.swingScoop = null;
     }
+
+    const toRemove = [];
+    this.scene.children.forEach((child) => {
+      if (child.userData && child.userData.isScoopRoot && child !== this.coneGroup) {
+        toRemove.push(child);
+      }
+    });
+    toRemove.forEach((obj) => this.scene.remove(obj));
 
     this.score = 0;
     this.stackCount = 0;
@@ -270,14 +290,30 @@ export class GameEngine {
   }
 
   prepareNextSwingScoop() {
+    this.clearNextScoopTimer();
+
+    if (this.swingScoop) {
+      this.scene.remove(this.swingScoop.group);
+      this.swingScoop = null;
+    }
+
     const charData = this.getNextCharacter();
     const hasSprinkles = this.combo >= 2;
     const hasCherry = this.combo >= 4 && this.stackCount >= 5;
 
-    const scoopData = this.scoopBuilder.buildScoop(charData.state, { hasSprinkles, hasCherry });
-    const group = scoopData.group;
+    let scoopData;
+    try {
+      scoopData = this.scoopBuilder.buildScoop(charData.state, { hasSprinkles, hasCherry });
+    } catch (err) {
+      console.warn('스쿱 생성 실패 fallback:', err);
+      const defState = createDefaultScoopCharacter().state;
+      scoopData = this.scoopBuilder.buildScoop(defState, { hasSprinkles: false, hasCherry: false });
+    }
 
-    const targetY = this.getCurrentStackTopY() + 3.8;
+    const group = scoopData.group;
+    group.userData.isScoopRoot = true;
+
+    const targetY = this.getCurrentStackTopY() + 2.5;
     this.dispenserY = targetY;
     group.position.set(0, targetY, 0);
     this.scene.add(group);
@@ -428,7 +464,9 @@ export class GameEngine {
 
     this.updateCameraTarget();
 
-    setTimeout(() => {
+    this.clearNextScoopTimer();
+    this.nextScoopTimer = setTimeout(() => {
+      this.nextScoopTimer = null;
       if (this.state === GAME_STATE.PLAYING) {
         this.prepareNextSwingScoop();
       }
@@ -469,11 +507,13 @@ export class GameEngine {
     }
 
     if (this.lives <= 0) {
-
+      this.clearNextScoopTimer();
       this.triggerGameOver('기회를 모두 소진했습니다!');
     } else {
       this.notifyUpdate();
-      setTimeout(() => {
+      this.clearNextScoopTimer();
+      this.nextScoopTimer = setTimeout(() => {
+        this.nextScoopTimer = null;
         if (this.state === GAME_STATE.PLAYING) {
           this.prepareNextSwingScoop();
         }
@@ -483,6 +523,7 @@ export class GameEngine {
 
   triggerCollapse() {
     if (this.state === GAME_STATE.COLLAPSING || this.state === GAME_STATE.GAMEOVER) return;
+    this.clearNextScoopTimer();
     this.state = GAME_STATE.COLLAPSING;
 
     if (this.swingScoop) {
@@ -538,6 +579,7 @@ export class GameEngine {
   }
 
   triggerGameOver(reason = '') {
+    this.clearNextScoopTimer();
     this.state = GAME_STATE.GAMEOVER;
     this.sound.stopBgm();
     this.notifyUpdate(reason);
@@ -589,7 +631,13 @@ export class GameEngine {
   }
 
   updateSwing(dt) {
-    if (this.state !== GAME_STATE.PLAYING || !this.swingScoop) return;
+    if (this.state !== GAME_STATE.PLAYING) return;
+
+    if (!this.swingScoop && !this.fallingScoop && !this.nextScoopTimer) {
+      this.prepareNextSwingScoop();
+      return;
+    }
+    if (!this.swingScoop) return;
 
     const speedScale = 1.0 + Math.min(0.65, this.stackCount * 0.035);
     this.swingTime += dt * speedScale;
@@ -674,18 +722,20 @@ export class GameEngine {
   }
 
   updateCamera(dt) {
-    const targetY = this.getCurrentStackTopY() + 2.8;
-    this.camera.position.y += (targetY - this.camera.position.y) * 0.08;
+    const stackTopY = this.getCurrentStackTopY();
+    const targetY = stackTopY + 2.0;
+    this.camera.position.y += (targetY - this.camera.position.y) * 0.10;
 
+    const lookY = this.camera.position.y - 0.7;
     if (this.cameraShake > 0) {
       this.cameraShake -= dt * 0.8;
       const shkX = (Math.random() - 0.5) * this.cameraShake * 1.2;
       const shkY = (Math.random() - 0.5) * this.cameraShake * 1.2;
       this.camera.position.x = shkX;
-      this.camera.lookAt(shkX, this.camera.position.y - 1.8 + shkY, 0);
+      this.camera.lookAt(shkX, lookY + shkY, 0);
     } else {
       this.camera.position.x = 0;
-      this.camera.lookAt(0, this.camera.position.y - 1.8, 0);
+      this.camera.lookAt(0, lookY, 0);
     }
 
     this.updateSkyColor();
@@ -708,9 +758,9 @@ export class GameEngine {
 
   updateCameraTarget(instant = false) {
     if (instant) {
-      const targetY = this.coneTopY + 2.8;
+      const targetY = this.coneTopY + 2.0;
       this.camera.position.y = targetY;
-      this.camera.lookAt(0, targetY - 1.8, 0);
+      this.camera.lookAt(0, targetY - 0.7, 0);
     }
   }
 
@@ -806,14 +856,8 @@ export class GameEngine {
       localStorage.setItem('10ice_selected_char_id', character.id);
     } catch (e) {}
 
-    if (this.state === GAME_STATE.READY || !this.swingScoop) {
-      if (this.swingScoop) {
-        this.scene.remove(this.swingScoop.group);
-        this.swingScoop = null;
-      }
-      if (this.state === GAME_STATE.PLAYING) {
-        this.prepareNextSwingScoop();
-      }
+    if (this.state === GAME_STATE.PLAYING && !this.fallingScoop) {
+      this.prepareNextSwingScoop();
     }
   }
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CharacterBuilder, toSmoothNonIndexed } from './characterBuilder.js';
-import { TextureGenerator, getSwatchUV } from './textureGenerator.js';
+import { TextureGenerator, getSwatchUV, ATLAS_SIZE } from './textureGenerator.js';
 
 export class ScoopBuilder {
   constructor() {
@@ -12,11 +12,18 @@ export class ScoopBuilder {
     const headScale = state.headScale ?? 1.0;
     const poly = this.charBuilder.getPolySpec(state.polyDetail || 'low', state.lowPolyFlat || false);
 
-    const canvas = this.textureGen.update(state);
-    const texture = new THREE.CanvasTexture(canvas);
+    const sourceCanvas = this.textureGen.update(state);
+    const scoopCanvas = document.createElement('canvas');
+    scoopCanvas.width = ATLAS_SIZE;
+    scoopCanvas.height = ATLAS_SIZE;
+    const scoopCtx = scoopCanvas.getContext('2d');
+    scoopCtx.drawImage(sourceCanvas, 0, 0);
+
+    const texture = new THREE.CanvasTexture(scoopCanvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
+    texture.needsUpdate = true;
 
     const geometries = [];
 
