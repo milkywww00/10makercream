@@ -22,8 +22,6 @@ const dom = {
   btnRosterAdd: document.getElementById('btnRosterAdd'),
   fileInput: document.getElementById('fileInput'),
   characterList: document.getElementById('characterList'),
-  checkRandomMix: document.getElementById('checkRandomMix'),
-  randomMixWrap: document.getElementById('randomMixWrap'),
 
   judgementPopup: document.getElementById('judgementPopup'),
   gameOverModal: document.getElementById('gameOverModal'),
@@ -175,15 +173,6 @@ function setupControls() {
   dom.btnHelp.addEventListener('click', () => dom.helpModal.classList.add('show'));
   dom.btnCloseHelp.addEventListener('click', () => dom.helpModal.classList.remove('show'));
 
-  if (dom.checkRandomMix) {
-    dom.checkRandomMix.checked = engine.isRandomMixMode;
-    dom.checkRandomMix.addEventListener('change', (e) => {
-      engine.isRandomMixMode = e.target.checked;
-      try {
-        localStorage.setItem('10ice_random_mix', String(e.target.checked));
-      } catch (err) {}
-    });
-  }
 
   const triggerUpload = () => dom.fileInput.click();
   if (dom.btnRosterAdd) dom.btnRosterAdd.addEventListener('click', triggerUpload);
@@ -245,9 +234,6 @@ function renderCharacterRoster() {
   dom.characterList.innerHTML = '';
 
   const roster = engine.activeRoster;
-  const hasMultiple = roster.length > 1;
-
-  dom.randomMixWrap.style.display = hasMultiple ? 'flex' : 'none';
 
   roster.forEach((char) => {
     const card = document.createElement('button');

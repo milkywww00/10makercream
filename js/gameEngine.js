@@ -29,8 +29,8 @@ export class GameEngine {
       this.activeRoster = [defaultChar];
       this.selectedCharacter = defaultChar;
     }
-    this.characterTurnIndex = 0;
-    this.isRandomMixMode = localStorage.getItem('10ice_random_mix') === 'true';
+    const selIdx = this.activeRoster.findIndex(c => c.id === this.selectedCharacter?.id);
+    this.characterTurnIndex = selIdx >= 0 ? selIdx : 0;
 
     this.score = 0;
     this.stackCount = 0;
@@ -230,14 +230,14 @@ export class GameEngine {
       this.activeRoster = [def];
       return def;
     }
-    if (!this.isRandomMixMode) {
-      return this.selectedCharacter || this.activeRoster[0] || createDefaultScoopCharacter();
+    if (this.activeRoster.length === 1) {
+      return this.activeRoster[0];
     }
     const idx = (this.characterTurnIndex || 0) % this.activeRoster.length;
     const char = this.activeRoster[idx];
     this.characterTurnIndex = (this.characterTurnIndex || 0) + 1;
     if (!char || !char.state) {
-      return this.selectedCharacter || this.activeRoster[0] || createDefaultScoopCharacter();
+      return this.activeRoster[0] || createDefaultScoopCharacter();
     }
     return char;
   }
@@ -278,6 +278,8 @@ export class GameEngine {
     this.stackCount = 0;
     this.combo = 0;
     this.lives = 3;
+    const selIdx = this.activeRoster.findIndex(c => c.id === this.selectedCharacter?.id);
+    this.characterTurnIndex = selIdx >= 0 ? selIdx : 0;
     this.wobbleAngle = 0.0;
     this.wobbleVel = 0.0;
     this.wobbleTorque = 0.0;
@@ -852,6 +854,10 @@ export class GameEngine {
 
   selectCharacter(character) {
     this.selectedCharacter = character;
+    const foundIndex = this.activeRoster.findIndex(c => c.id === character.id);
+    if (foundIndex !== -1) {
+      this.characterTurnIndex = foundIndex;
+    }
     try {
       localStorage.setItem('10ice_selected_char_id', character.id);
     } catch (e) {}
