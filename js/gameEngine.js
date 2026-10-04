@@ -11,6 +11,21 @@ export const GAME_STATE = {
   GAMEOVER: 'GAMEOVER',
 };
 
+function generateScoreSignature(score, height) {
+  const secret = '10makercream_salt_sec_982!';
+  const str = `${score}:${height}:${secret}`;
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c64e6d;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
 export class GameEngine {
   constructor(canvasContainer) {
     this.container = canvasContainer;
@@ -37,8 +52,31 @@ export class GameEngine {
     this.combo = 0;
     this.maxCombo = 0;
     this.lives = 3;
-    this.bestScore = parseInt(localStorage.getItem('10ice_best_score') || '0', 10);
-    this.bestHeight = parseInt(localStorage.getItem('10ice_best_height') || '0', 10);
+
+    const rawSavedScore = parseInt(localStorage.getItem('10ice_best_score') || '0', 10);
+    const rawSavedHeight = parseInt(localStorage.getItem('10ice_best_height') || '0', 10);
+    const savedSig = localStorage.getItem('10ice_score_sig');
+    if (rawSavedScore > 0 || rawSavedHeight > 0) {
+      if (savedSig !== generateScoreSignature(rawSavedScore, rawSavedHeight)) {
+        this.bestScore = 0;
+        this.bestHeight = 0;
+        try {
+          localStorage.removeItem('10ice_best_score');
+          localStorage.removeItem('10ice_best_height');
+          localStorage.removeItem('10ice_score_sig');
+        } catch (e) {}
+      } else {
+        this.bestScore = rawSavedScore;
+        this.bestHeight = rawSavedHeight;
+      }
+    } else {
+      this.bestScore = 0;
+      this.bestHeight = 0;
+    }
+
+    this._scoreMask = Math.floor(Math.random() * 0x7fffffff) + 1;
+    this._maskedScore = 0 ^ this._scoreMask;
+    this._scoreHistory = [];
 
     this.scene = null;
     this.camera = null;
@@ -249,6 +287,17 @@ export class GameEngine {
     }
   }
 
+  verifyIntegrity() {
+    if ((this._maskedScore ^ this._scoreMask) !== this.score) {
+      return false;
+    }
+    const sum = this._scoreHistory.reduce((a, b) => a + b, 0);
+    if (sum !== this.score) {
+      return false;
+    }
+    return true;
+  }
+
   startNewGame() {
     this.clearNextScoopTimer();
     this.sound.init();
@@ -275,6 +324,9 @@ export class GameEngine {
     toRemove.forEach((obj) => this.scene.remove(obj));
 
     this.score = 0;
+    this._scoreMask = Math.floor(Math.random() * 0x7fffffff) + 1;
+    this._maskedScore = 0 ^ this._scoreMask;
+    this._scoreHistory = [];
     this.stackCount = 0;
     this.combo = 0;
     this.lives = 3;
@@ -422,15 +474,33 @@ export class GameEngine {
     this.sound.playSquash();
 
     this.stackCount++;
+    this._scoreHistory.push(pts);
     this.score += pts;
+    this._maskedScore = this.score ^ this._scoreMask;
+
+    if (!this.verifyIntegrity()) {
+      this.score = 0;
+      this._maskedScore = 0 ^ this._scoreMask;
+      this._scoreHistory = [];
+      this.triggerGameOver('비정상적인 점수 조작이 감지되었습니다.');
+      return;
+    }
 
     if (this.score > this.bestScore) {
       this.bestScore = this.score;
-      localStorage.setItem('10ice_best_score', this.bestScore);
+      try {
+        localStorage.setItem('10ice_best_score', String(this.bestScore));
+        localStorage.setItem('10ice_best_height', String(this.bestHeight));
+        localStorage.setItem('10ice_score_sig', generateScoreSignature(this.bestScore, this.bestHeight));
+      } catch (e) {}
     }
     if (this.stackCount > this.bestHeight) {
       this.bestHeight = this.stackCount;
-      localStorage.setItem('10ice_best_height', this.bestHeight);
+      try {
+        localStorage.setItem('10ice_best_score', String(this.bestScore));
+        localStorage.setItem('10ice_best_height', String(this.bestHeight));
+        localStorage.setItem('10ice_score_sig', generateScoreSignature(this.bestScore, this.bestHeight));
+      } catch (e) {}
     }
 
     falling.group.position.set(placedX, topY, 0);
@@ -584,6 +654,12 @@ export class GameEngine {
     this.clearNextScoopTimer();
     this.state = GAME_STATE.GAMEOVER;
     this.sound.stopBgm();
+    if (!this.verifyIntegrity()) {
+      this.score = 0;
+      this._maskedScore = 0 ^ this._scoreMask;
+      this._scoreHistory = [];
+      reason = '비정상적인 점수 조작이 감지되어 점수가 무효화되었습니다.';
+    }
     this.notifyUpdate(reason);
   }
 
@@ -809,6 +885,10 @@ export class GameEngine {
   }
 
   notifyUpdate(extraMsg = '') {
+    if (!this.verifyIntegrity() && this.state !== GAME_STATE.GAMEOVER) {
+      this.triggerGameOver('비정상적인 점수 조작이 감지되었습니다.');
+      return;
+    }
     if (this.onScoreUpdate) {
       this.onScoreUpdate({
         score: this.score,
@@ -925,3 +1005,5 @@ export class GameEngine {
     }
   }
 }
+
+Object.freeze(GameEngine.prototype);

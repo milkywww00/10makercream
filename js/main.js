@@ -299,3 +299,22 @@ function renderCharacterRoster() {
 }
 
 window.addEventListener('DOMContentLoaded', initApp);
+
+window.addEventListener('keydown', (e) => {
+  if (
+    e.key === 'F12' ||
+    (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) ||
+    (e.ctrlKey && (e.key === 'U' || e.key === 'u'))
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  }
+});
+
+window.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
+console.log('%c[보안 안내] 콘솔을 통한 점수 및 게임 데이터 조작 시도는 무결성 검증에 의해 즉시 무효화됩니다.', 'color: #ef4444; font-size: 14px; font-weight: 700;');
+
