@@ -77,7 +77,8 @@ export class GameEngine {
     this.scene.background = new THREE.Color('#e0f2fe');
 
     const aspect = this.container.clientWidth / this.container.clientHeight;
-    this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 100);
+    const fov = aspect < 1.0 ? 45 + (1.0 - aspect) * 18 : 45;
+    this.camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 100);
     this.camera.position.set(0, 3.2, 7.5);
     this.camera.lookAt(0, 1.2, 0);
 
@@ -217,6 +218,7 @@ export class GameEngine {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     this.camera.aspect = w / h;
+    this.camera.fov = this.camera.aspect < 1.0 ? 45 + (1.0 - this.camera.aspect) * 18 : 45;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
   }
