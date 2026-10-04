@@ -357,6 +357,15 @@ body {
   color: #ffffff;
 }
 
+.action-btn.link-btn {
+  text-decoration: none;
+}
+
+.action-btn.link-btn:hover {
+  color: var(--primary-color);
+  border-color: #bae6fd;
+}
+
 .floor-color-wrap {
   display: inline-flex;
   align-items: center;
