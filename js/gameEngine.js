@@ -106,6 +106,7 @@ export class GameEngine {
 
     this.onStateChange = null;
     this.onScoreUpdate = null;
+    this.onDangerUpdate = null;
     this.onJudgement = null;
 
     this.initScene();
@@ -785,18 +786,42 @@ export class GameEngine {
     this.wobbleVel += accel * dt;
     this.wobbleAngle += this.wobbleVel * dt;
 
-    const MAX_TILT = 0.62;
-    this.dangerLevel = Math.min(1.0, Math.abs(this.wobbleAngle) / MAX_TILT);
-
+    let sumX = 0.0;
     this.stackedScoops.forEach((item, idx) => {
       const heightProg = (idx + 1) / N;
 
       const bendX = this.wobbleAngle * (item.origY - this.coneTopY) * 0.28;
       item.group.position.x = item.x + bendX;
       item.group.rotation.z = this.wobbleAngle * heightProg * 0.65;
+      sumX += item.group.position.x;
     });
 
-    if (Math.abs(this.wobbleAngle) > MAX_TILT || Math.abs(this.wobbleTorque) > 5.5) {
+    const lastScoop = this.stackedScoops[N - 1];
+    const topOffset = Math.abs(lastScoop.group.position.x);
+    const comOffset = Math.abs(sumX / N);
+
+    const MAX_TILT = 0.58;
+    const MAX_TORQUE = 4.8;
+    const MAX_TOP_OFFSET = 1.95;
+    const MAX_COM_OFFSET = 1.05;
+
+    const angleRatio = Math.abs(this.wobbleAngle) / MAX_TILT;
+    const torqueRatio = Math.abs(this.wobbleTorque) / MAX_TORQUE;
+    const topRatio = topOffset / MAX_TOP_OFFSET;
+    const comRatio = comOffset / MAX_COM_OFFSET;
+
+    this.dangerLevel = Math.min(1.0, Math.max(angleRatio, torqueRatio, topRatio, comRatio));
+
+    if (this.onDangerUpdate) {
+      this.onDangerUpdate(this.dangerLevel);
+    }
+
+    if (
+      Math.abs(this.wobbleAngle) > MAX_TILT ||
+      Math.abs(this.wobbleTorque) > MAX_TORQUE ||
+      topOffset > MAX_TOP_OFFSET ||
+      comOffset > MAX_COM_OFFSET
+    ) {
       this.triggerCollapse();
     }
   }

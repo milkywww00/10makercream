@@ -40,6 +40,7 @@ function initApp() {
   engine = new GameEngine(dom.container);
 
   engine.onScoreUpdate = updateHUD;
+  engine.onDangerUpdate = updateDangerUI;
   engine.onJudgement = showJudgement;
   engine.onStateChange = onStateChange;
 
@@ -85,7 +86,11 @@ function updateHUD(stats) {
     dom.livesBox.appendChild(createHeartSvg(i < stats.lives));
   }
 
-  const dangerPct = Math.min(100, Math.round(stats.dangerLevel * 100));
+  updateDangerUI(stats.dangerLevel);
+}
+
+function updateDangerUI(dangerLevel) {
+  const dangerPct = Math.min(100, Math.round(dangerLevel * 100));
   dom.dangerFill.style.width = `${dangerPct}%`;
   if (dangerPct > 65) {
     dom.dangerFill.style.background = '#ef4444';
