@@ -93,6 +93,7 @@ export class GameEngine {
     this.swingTime = 0;
     this.swingSpeed = 2.4;
     this.swingAmp = 2.1;
+    this.swingPhaseOffset = 0.0;
     this.dispenserY = 4.2;
 
     this.wobbleAngle = 0.0;
@@ -369,6 +370,8 @@ export class GameEngine {
 
     const targetY = this.getCurrentStackTopY() + 2.5;
     this.dispenserY = targetY;
+    this.swingPhaseOffset = Math.random() * Math.PI * 2;
+    this.swingTime += (Math.random() - 0.5) * 1.5;
     group.position.set(0, targetY, 0);
     this.scene.add(group);
 
@@ -384,7 +387,7 @@ export class GameEngine {
       return this.coneTopY + 0.55;
     }
     const last = this.stackedScoops[this.stackedScoops.length - 1];
-    return last.y + 0.78;
+    return last.group.position.y + 0.78;
   }
 
   getCurrentStackTopX() {
@@ -392,7 +395,7 @@ export class GameEngine {
       return 0.0;
     }
     const last = this.stackedScoops[this.stackedScoops.length - 1];
-    return last.x;
+    return last.group.position.x;
   }
 
   dropScoop() {
@@ -406,16 +409,13 @@ export class GameEngine {
     const startX = group.position.x;
     const startY = group.position.y;
 
-    const swingCos = Math.cos(this.swingTime * this.swingSpeed);
-    const vx = swingCos * this.swingAmp * this.swingSpeed * 0.12;
-
     this.fallingScoop = {
       group,
       data,
       character,
       x: startX,
       y: startY,
-      vx,
+      vx: 0.0,
       vy: 0.0,
       squash: 1.0,
     };
@@ -451,15 +451,17 @@ export class GameEngine {
       pts = 1000 + this.combo * 250;
       this.combo++;
 
-      this.wobbleVel *= 0.35;
-      this.wobbleAngle *= 0.45;
+      const dampVel = Math.min(0.65, 0.35 + this.stackCount * 0.002);
+      const dampAngle = Math.min(0.85, 0.65 + this.stackCount * 0.0015);
+      this.wobbleVel *= dampVel;
+      this.wobbleAngle *= dampAngle;
       this.spawnParticles(falling.x, topY, 'gold', 24);
       this.sound.playPerfect(this.combo);
     } else if (absDelta <= GREAT_LIMIT) {
       judgement = 'GREAT';
       pts = 600;
       this.combo = Math.max(1, this.combo);
-      this.wobbleVel *= 0.70;
+      this.wobbleVel *= 0.75;
       this.spawnParticles(falling.x, topY, 'sparkle', 14);
       this.sound.playGreat();
     } else {
@@ -503,12 +505,15 @@ export class GameEngine {
       } catch (e) {}
     }
 
+    const bendX = this.wobbleAngle * (topY - this.coneTopY) * 0.28;
+    const placedRelX = placedX - bendX;
+
     falling.group.position.set(placedX, topY, 0);
     this.stackedScoops.push({
       group: falling.group,
       data: falling.data,
       character: falling.character,
-      x: placedX,
+      x: placedRelX,
       y: topY,
       origY: topY,
       squishT: 0.25,
@@ -537,12 +542,13 @@ export class GameEngine {
     this.updateCameraTarget();
 
     this.clearNextScoopTimer();
+    const respawnDelay = 220 + Math.random() * 120;
     this.nextScoopTimer = setTimeout(() => {
       this.nextScoopTimer = null;
       if (this.state === GAME_STATE.PLAYING) {
         this.prepareNextSwingScoop();
       }
-    }, 280);
+    }, respawnDelay);
   }
 
   handleMiss(falling, deltaX) {
@@ -584,12 +590,13 @@ export class GameEngine {
     } else {
       this.notifyUpdate();
       this.clearNextScoopTimer();
+      const respawnDelay = 420 + Math.random() * 120;
       this.nextScoopTimer = setTimeout(() => {
         this.nextScoopTimer = null;
         if (this.state === GAME_STATE.PLAYING) {
           this.prepareNextSwingScoop();
         }
-      }, 500);
+      }, respawnDelay);
     }
   }
 
@@ -717,10 +724,15 @@ export class GameEngine {
     }
     if (!this.swingScoop) return;
 
-    const speedScale = 1.0 + Math.min(0.65, this.stackCount * 0.035);
+    const baseProgress = Math.min(1.2, this.stackCount * 0.025);
+    const highStackBonus = Math.min(1.0, Math.log10(1 + Math.max(0, this.stackCount - 15) * 0.05) * 0.65);
+    const speedScale = 1.0 + baseProgress + highStackBonus;
+
     this.swingTime += dt * speedScale;
 
-    const x = Math.sin(this.swingTime * this.swingSpeed) * this.swingAmp;
+    const windIntensity = Math.min(1.0, Math.max(0, (this.stackCount - 20) / 80));
+    const harmonicX = Math.sin(this.swingTime * this.swingSpeed * 0.45 + (this.swingPhaseOffset || 0)) * (this.swingAmp * 0.16 * windIntensity);
+    const x = Math.sin(this.swingTime * this.swingSpeed) * this.swingAmp + harmonicX;
     const tilt = -Math.cos(this.swingTime * this.swingSpeed) * 0.16;
 
     this.swingScoop.group.position.x = x;
@@ -732,14 +744,12 @@ export class GameEngine {
     if (!this.fallingScoop) return;
 
     const f = this.fallingScoop;
-    f.vy -= 22.0 * dt;
+    f.vy -= 26.0 * dt;
     f.y += f.vy * dt;
-    f.x += f.vx * dt;
 
     f.group.position.x = f.x;
     f.group.position.y = f.y;
-
-    f.group.rotation.z = f.vx * 0.15;
+    f.group.rotation.z = 0.0;
 
     const targetY = this.getCurrentStackTopY();
     if (f.y <= targetY) {
@@ -758,6 +768,13 @@ export class GameEngine {
       const arm = (idx + 1) / N;
       netTorque += item.x * arm * 2.2;
     });
+
+    if (N > 25) {
+      const windFactor = Math.min(1.0, (N - 25) / 75);
+      const windTime = this.clock.getElapsedTime();
+      const gust = Math.sin(windTime * 0.9) * 0.7 + Math.sin(windTime * 2.3) * 0.35;
+      netTorque += gust * windFactor * 0.85;
+    }
 
     this.wobbleTorque = netTorque;
 
