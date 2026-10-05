@@ -764,11 +764,9 @@ export class GameEngine {
 
     const N = this.stackedScoops.length;
     let netTorque = 0.0;
-
-    this.stackedScoops.forEach((item, idx) => {
-      const arm = (idx + 1) / N;
-      netTorque += item.x * arm * 2.2;
-    });
+    for (let i = 0; i < N; i++) {
+      netTorque += this.stackedScoops[i].x * ((i + 1) / N) * 2.2;
+    }
 
     if (N > 25) {
       const windFactor = Math.min(1.0, (N - 25) / 75);
@@ -787,14 +785,13 @@ export class GameEngine {
     this.wobbleAngle += this.wobbleVel * dt;
 
     let sumX = 0.0;
-    this.stackedScoops.forEach((item, idx) => {
-      const heightProg = (idx + 1) / N;
-
+    for (let i = 0; i < N; i++) {
+      const item = this.stackedScoops[i];
       const bendX = this.wobbleAngle * (item.origY - this.coneTopY) * 0.28;
       item.group.position.x = item.x + bendX;
-      item.group.rotation.z = this.wobbleAngle * heightProg * 0.65;
+      item.group.rotation.z = this.wobbleAngle * ((i + 1) / N) * 0.65;
       sumX += item.group.position.x;
-    });
+    }
 
     const lastScoop = this.stackedScoops[N - 1];
     const topOffset = Math.abs(lastScoop.group.position.x);
@@ -873,7 +870,12 @@ export class GameEngine {
     } else {
       bgColor = '#1e1b4b';
     }
-    this.scene.background.lerp(new THREE.Color(bgColor), 0.05);
+    if (!this._targetSkyColor) {
+      this._targetSkyColor = new THREE.Color(bgColor);
+    } else {
+      this._targetSkyColor.set(bgColor);
+    }
+    this.scene.background.lerp(this._targetSkyColor, 0.05);
   }
 
   updateCameraTarget(instant = false) {
@@ -997,6 +999,7 @@ export class GameEngine {
       this.activeRoster.push(character);
     }
     this.selectCharacter(character);
+    this.scoopBuilder.clearTextureCache();
     this.saveCharacters();
   }
 
@@ -1010,6 +1013,7 @@ export class GameEngine {
         this.selectedCharacter = this.activeRoster[0];
       }
     }
+    this.scoopBuilder.clearTextureCache();
     this.saveCharacters();
 
     if (this.swingScoop) {

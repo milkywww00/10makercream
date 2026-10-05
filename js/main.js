@@ -89,18 +89,29 @@ function updateHUD(stats) {
   updateDangerUI(stats.dangerLevel);
 }
 
+let lastDangerPct = -1;
+let lastDangerColor = '';
+
 function updateDangerUI(dangerLevel) {
   const dangerPct = Math.min(100, Math.round(dangerLevel * 100));
-  dom.dangerFill.style.width = `${dangerPct}%`;
-  if (dangerPct > 65) {
-    dom.dangerFill.style.background = '#ef4444';
-    dom.dangerWarning.classList.add('active');
-  } else if (dangerPct > 35) {
-    dom.dangerFill.style.background = '#f59e0b';
-    dom.dangerWarning.classList.remove('active');
-  } else {
-    dom.dangerFill.style.background = '#10b981';
-    dom.dangerWarning.classList.remove('active');
+  if (dangerPct !== lastDangerPct) {
+    lastDangerPct = dangerPct;
+    dom.dangerFill.style.transform = `scaleX(${dangerPct / 100})`;
+  }
+
+  const colorState = dangerPct > 65 ? 'red' : dangerPct > 35 ? 'yellow' : 'green';
+  if (colorState !== lastDangerColor) {
+    lastDangerColor = colorState;
+    if (colorState === 'red') {
+      dom.dangerFill.style.background = '#ef4444';
+      dom.dangerWarning.classList.add('active');
+    } else if (colorState === 'yellow') {
+      dom.dangerFill.style.background = '#f59e0b';
+      dom.dangerWarning.classList.remove('active');
+    } else {
+      dom.dangerFill.style.background = '#10b981';
+      dom.dangerWarning.classList.remove('active');
+    }
   }
 }
 

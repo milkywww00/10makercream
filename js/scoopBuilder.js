@@ -6,12 +6,14 @@ export class ScoopBuilder {
   constructor() {
     this.textureGen = new TextureGenerator();
     this.charBuilder = new CharacterBuilder(null);
+    this.textureCache = new Map();
   }
 
-  buildScoop(state, options = {}) {
-    const headScale = state.headScale ?? 1.0;
-    const poly = this.charBuilder.getPolySpec(state.polyDetail || 'low', state.lowPolyFlat || false);
-
+  getTexture(state) {
+    const key = state.id || `${state.characterName || 'def'}_${state.bodyColor || ''}_${state.outlineColor || ''}_${state.eyeType || ''}_${state.blushType || ''}_${state.mouthType || ''}`;
+    if (this.textureCache.has(key)) {
+      return this.textureCache.get(key);
+    }
     const sourceCanvas = this.textureGen.update(state);
     const scoopCanvas = document.createElement('canvas');
     scoopCanvas.width = ATLAS_SIZE;
@@ -24,6 +26,20 @@ export class ScoopBuilder {
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.needsUpdate = true;
+    this.textureCache.set(key, texture);
+    return texture;
+  }
+
+  clearTextureCache() {
+    this.textureCache.forEach(t => t.dispose());
+    this.textureCache.clear();
+  }
+
+  buildScoop(state, options = {}) {
+    const headScale = state.headScale ?? 1.0;
+    const poly = this.charBuilder.getPolySpec(state.polyDetail || 'low', state.lowPolyFlat || false);
+
+    const texture = this.getTexture(state);
 
     const geometries = [];
 
